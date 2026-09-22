@@ -1,4 +1,3 @@
-/node_modules
-/dist
-.envnode_modules/ 
-.env 
+/node_modules/
+/dist/
+/.env
