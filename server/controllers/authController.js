@@ -126,11 +126,13 @@ const login = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: 'Something went wrong during login',
-    });
-  }
+  console.error("LOGIN ERROR:", error);
+
+  return res.status(500).json({
+    success: false,
+    message: error.message,
+  });
+}
 };
 
 // GET /api/auth/me

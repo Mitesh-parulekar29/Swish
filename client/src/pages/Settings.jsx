@@ -1,0 +1,3 @@
+import { useAuth } from "../features/auth/AuthContext";
+import Avatar from "../components/Avatar";
+export default function Settings() { const { user } = useAuth(); return <section className="page narrow-page"><h1>Settings</h1><div className="settings-card"><div className="user-inline"><Avatar user={user} size={64}/><div><strong>{user?.username}</strong><span>{user?.name}</span></div></div><div className="settings-row"><span>Account privacy</span><span>{user?.isPrivate ? "Private" : "Public"}</span></div><div className="settings-row"><span>Email</span><span>{user?.email}</span></div></div></section>; }

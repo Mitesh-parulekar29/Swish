@@ -5,6 +5,7 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const postRoutes = require('./routes/postRoutes');
+const userRoutes = require('./routes/userRoutes');
 
 const app = express();
 
@@ -31,6 +32,9 @@ app.use('/api/auth', authRoutes);
 
 // Posts API
 app.use('/api/posts', postRoutes);
+
+// Users API
+app.use('/api/users', userRoutes);
 
 // Fallback for unknown routes
 app.use((req, res) => {
