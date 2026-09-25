@@ -17,6 +17,7 @@ const createPost = async (req, res) => {
     const post = await Post.create({
       user: req.user._id,
       caption: typeof caption === 'string' ? caption.trim() : '',
+      image: req.file ? `/uploads/posts/${req.file.filename}` : undefined,
     });
 
     return res.status(201).json({
