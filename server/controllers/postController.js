@@ -23,11 +23,21 @@ const createPost = async (req, res) => {
     if (typeof caption !== 'string' || typeof image !== 'string') {
       return res.status(400).json({ success: false, message: 'Invalid post data' });
     }
-    if (!caption.trim() && !image.trim()) {
+
+    const hasUploadedFile = Boolean(req.file);
+    const hasImageString = Boolean(image.trim());
+    const hasCaption = Boolean(caption.trim());
+
+    if (!hasCaption && !hasUploadedFile && !hasImageString) {
       return res.status(400).json({ success: false, message: 'Add an image or caption' });
     }
 
-    const post = await Post.create({ user: req.user._id, caption: caption.trim(), image: image.trim() });
+    const post = await Post.create({
+      user: req.user._id,
+      caption: caption.trim(),
+      image: hasUploadedFile ? `/uploads/posts/${req.file.filename}` : image.trim(),
+    });
+
     await User.findByIdAndUpdate(req.user._id, { $inc: { postsCount: 1 } });
     await post.populate('user', 'name username profileImage');
 
@@ -41,7 +51,7 @@ const getFeed = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select('following blockedUsers');
     const allowedIds = [req.user._id, ...(user.following || [])];
-    const posts = await Post.find({ $and: [{ user: { $in: allowedIds } }, { user: { $nin: user.blockedUsers || [] } }] })
+    const posts = await Post.find({ $and: [{ user: { $in: allowedIds } }, { user: {$nin: user.blockedUsers || [] } }] })
       .populate('user', 'name username profileImage')
       .sort({ createdAt: -1 })
       .limit(50);

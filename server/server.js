@@ -1,4 +1,5 @@
 require('dotenv').config();
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
@@ -14,6 +15,9 @@ connectDB();
 // Core middleware
 app.use(cors());
 app.use(express.json());
+
+// Serve locally uploaded files (development storage)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Health check route to confirm the server is running.
 app.get('/', (req, res) => {

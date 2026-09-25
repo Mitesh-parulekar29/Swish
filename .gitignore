@@ -1,3 +1,8 @@
-/node_modules/
-/dist/
-/.env
+/node_modules
+server/node_modules/
+/dist
+.env
+server/.env
+
+# Local image uploads (do not commit user-uploaded files)
+server/uploads/
