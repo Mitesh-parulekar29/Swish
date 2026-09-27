@@ -6,3 +6,7 @@ server/.env
 
 # Local image uploads (do not commit user-uploaded files)
 server/uploads/
+
+# Do not commit PDFs
+*.pdf
+"Swish Project.pdf"
