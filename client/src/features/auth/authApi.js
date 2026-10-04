@@ -51,3 +51,22 @@ export async function getCurrentUser(token) {
 
   return result;
 }
+
+export async function changePassword(token, data) {
+  const response = await fetch(`${API_URL}/change-password`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.message || "Failed to change password");
+  }
+
+  return result;
+}

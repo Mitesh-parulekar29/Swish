@@ -1,45 +1,23 @@
 const Post = require('../models/Post');
 const User = require('../models/User');
-
-const serializeComment = (c) => ({
-  id: c._id,
-  _id: c._id,
-  text: c.text,
-  createdAt: c.createdAt,
-  user: c.user && {
-    id: c.user._id || c.user.id,
-    _id: c.user._id || c.user.id,
-    name: c.user.name,
-    username: c.user.username,
-    profileImage: c.user.profileImage,
-  },
-});
+const createNotification = require('../utils/createNotification');
+const { includesId, hasBlocked, getHiddenUserIds } = require('../utils/blockHelpers');
 
 const serializePost = (post) => ({
   id: post._id,
-  _id: post._id,
   image: post.image || '',
   caption: post.caption || '',
-  tags: post.tags || [],
   likesCount: post.likes?.length || 0,
   commentsCount: post.comments?.length || 0,
-  comments: (post.comments || []).map(serializeComment),
   isLiked: false,
   createdAt: post.createdAt,
   user: post.user && {
-    id: post.user._id || post.user.id,
-    _id: post.user._id || post.user.id,
+    id: post.user._id,
     name: post.user.name,
     username: post.user.username,
     profileImage: post.user.profileImage,
   },
 });
-
-const extractTags = (caption) => {
-  if (!caption) return [];
-  const matches = caption.match(/#([a-zA-Z0-9_-]+)/g);
-  return matches ? matches.map((t) => t.replace('#', '').toLowerCase()) : [];
-};
 
 const createPost = async (req, res) => {
   try {
@@ -56,12 +34,9 @@ const createPost = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Add an image or caption' });
     }
 
-    const autoTags = extractTags(caption);
-
     const post = await Post.create({
       user: req.user._id,
       caption: caption.trim(),
-      tags: autoTags,
       image: hasUploadedFile ? `/uploads/posts/${req.file.filename}` : image.trim(),
     });
 
@@ -76,39 +51,17 @@ const createPost = async (req, res) => {
 
 const getFeed = async (req, res) => {
   try {
-    const { scope = 'following' } = req.query;
-    const user = await User.findById(req.user._id).select('following blockedUsers');
-    
-    let filter = {};
-    if (scope === 'following') {
-      const allowedIds = [req.user._id, ...(user?.following || [])];
-      filter = {
-        $and: [
-          { user: { $in: allowedIds } },
-          { user: { $nin: user?.blockedUsers || [] } }
-        ]
-      };
-    } else {
-      // Campus / All feed
-      filter = {
-        user: { $nin: user?.blockedUsers || [] }
-      };
-    }
-
-    const posts = await Post.find(filter)
+    const user = await User.findById(req.user._id).select('following');
+    const hiddenIds = await getHiddenUserIds(req.user._id); // blocked by me + blocked me
+    const allowedIds = [req.user._id, ...(user.following || [])];
+    const posts = await Post.find({ user: { $in: allowedIds, $nin: hiddenIds } })
       .populate('user', 'name username profileImage')
-      .populate('comments.user', 'name username profileImage')
       .sort({ createdAt: -1 })
-      .limit(60);
+      .limit(50);
 
     return res.json({
       success: true,
-      data: {
-        posts: posts.map((post) => ({
-          ...serializePost(post),
-          isLiked: post.likes.some((id) => id.equals(req.user._id)),
-        })),
-      },
+      data: { posts: posts.map((post) => ({ ...serializePost(post), isLiked: post.likes.some((id) => id.equals(req.user._id)) })) },
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to load feed' });
@@ -120,19 +73,28 @@ const getUserPosts = async (req, res) => {
     const user = await User.findOne({ username: req.params.username.toLowerCase() });
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
+    const isMe = user._id.equals(req.user._id);
+
+    // This user has blocked the viewer -> show no posts at all
+    if (!isMe && includesId(user.blockedUsers, req.user._id)) {
+      return res.json({ success: true, data: { posts: [], isPrivate: false, isBlockedByUser: true } });
+    }
+
+    const isFollowing = user.followers.some((id) => id.equals(req.user._id));
+    if (user.isPrivate && !isMe && !isFollowing) {
+      return res.json({ success: true, data: { posts: [], isPrivate: true } });
+    }
+
     const posts = await Post.find({ user: user._id })
       .populate('user', 'name username profileImage')
-      .populate('comments.user', 'name username profileImage')
       .sort({ createdAt: -1 })
       .limit(100);
 
     return res.json({
       success: true,
       data: {
-        posts: posts.map((post) => ({
-          ...serializePost(post),
-          isLiked: post.likes.some((id) => id.equals(req.user._id)),
-        })),
+        posts: posts.map((post) => ({ ...serializePost(post), isLiked: post.likes.some((id) => id.equals(req.user._id)) })),
+        isPrivate: false,
       },
     });
   } catch (error) {
@@ -140,23 +102,15 @@ const getUserPosts = async (req, res) => {
   }
 };
 
+
 const getPost = async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id)
-      .populate('user', 'name username profileImage')
-      .populate('comments.user', 'name username profileImage');
-
+    const post = await Post.findById(req.params.id).populate('user', 'name username profileImage');
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
-
-    return res.json({
-      success: true,
-      data: {
-        post: {
-          ...serializePost(post),
-          isLiked: post.likes.some((id) => id.equals(req.user._id)),
-        },
-      },
-    });
+    if (await hasBlocked(post.user?._id, req.user._id)) {
+      return res.status(404).json({ success: false, message: 'Post not found' });
+    }
+    return res.json({ success: true, data: { post: { ...serializePost(post), isLiked: post.likes.some((id) => id.equals(req.user._id)), comments: post.comments } } });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to load post' });
   }
@@ -166,19 +120,48 @@ const likePost = async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
-
+    if (await hasBlocked(post.user, req.user._id)) {
+      return res.status(403).json({ success: false, message: 'You cannot interact with this post' });
+    }
     const liked = post.likes.some((id) => id.equals(req.user._id));
-    post.likes = liked
-      ? post.likes.filter((id) => !id.equals(req.user._id))
-      : [...post.likes, req.user._id];
-
+    post.likes = liked ? post.likes.filter((id) => !id.equals(req.user._id)) : [...post.likes, req.user._id];
     await post.save();
-    return res.json({
-      success: true,
-      data: { liked: !liked, likesCount: post.likes.length },
-    });
+    if (!liked) {
+      await createNotification({ recipient: post.user, actor: req.user, type: 'like', post: post._id });
+    }
+    return res.json({ success: true, data: { liked: !liked, likesCount: post.likes.length } });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to update like' });
+  }
+};
+
+const addComment = async (req, res) => {
+  try {
+    const text = String(req.body.text || '').trim();
+    if (!text) return res.status(400).json({ success: false, message: 'Comment cannot be empty' });
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+    if (await hasBlocked(post.user, req.user._id)) {
+      return res.status(403).json({ success: false, message: 'You cannot interact with this post' });
+    }
+    post.comments.push({ user: req.user._id, text });
+    await post.save();
+    await createNotification({ recipient: post.user, actor: req.user, type: 'comment', post: post._id, text });
+    return res.status(201).json({ success: true, data: { commentsCount: post.comments.length } });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to add comment' });
+  }
+};
+
+const deletePost = async (req, res) => {
+  try {
+    const post = await Post.findOne({ _id: req.params.id, user: req.user._id });
+    if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+    await post.deleteOne();
+    await User.findByIdAndUpdate(req.user._id, { $inc: { postsCount: -1 } });
+    return res.json({ success: true, message: 'Post deleted' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to delete post' });
   }
 };
 
@@ -189,6 +172,9 @@ const getPostLikes = async (req, res) => {
       'name username profileImage department role isVerified'
     );
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+    if (await hasBlocked(post.user, req.user._id)) {
+      return res.status(404).json({ success: false, message: 'Post not found' });
+    }
 
     return res.json({
       success: true,
@@ -205,36 +191,6 @@ const getPostLikes = async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to fetch likers' });
-  }
-};
-
-const addComment = async (req, res) => {
-  try {
-    const text = String(req.body.text || '').trim();
-    if (!text) return res.status(400).json({ success: false, message: 'Comment cannot be empty' });
-
-    const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
-
-    const newComment = { user: req.user._id, text };
-    post.comments.push(newComment);
-    await post.save();
-
-    const updatedPost = await Post.findById(req.params.id)
-      .populate('comments.user', 'name username profileImage');
-
-    const added = updatedPost.comments[updatedPost.comments.length - 1];
-
-    return res.status(201).json({
-      success: true,
-      data: {
-        comment: serializeComment(added),
-        commentsCount: updatedPost.comments.length,
-        comments: updatedPost.comments.map(serializeComment),
-      },
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'Failed to add comment' });
   }
 };
 
@@ -266,19 +222,6 @@ const deleteComment = async (req, res) => {
   }
 };
 
-const deletePost = async (req, res) => {
-  try {
-    const post = await Post.findOne({ _id: req.params.id, user: req.user._id });
-    if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
-
-    await post.deleteOne();
-    await User.findByIdAndUpdate(req.user._id, { $inc: { postsCount: -1 } });
-    return res.json({ success: true, message: 'Post deleted' });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'Failed to delete post' });
-  }
-};
-
 const getExplore = async (req, res) => {
   try {
     const { q, tag } = req.query;
@@ -292,6 +235,10 @@ const getExplore = async (req, res) => {
         { tags: { $regex: q, $options: 'i' } },
       ];
     }
+
+    // Hide posts of users I blocked and users who blocked me
+    const hiddenIds = await getHiddenUserIds(req.user._id);
+    filter.user = { $nin: hiddenIds };
 
     const posts = await Post.find(filter)
       .populate('user', 'name username profileImage')
@@ -338,8 +285,8 @@ const getExplore = async (req, res) => {
   }
 };
 
-module.exports = {
-  createPost,
+
+module.exports = { createPost,
   getFeed,
   getUserPosts,
   getPost,
@@ -348,5 +295,4 @@ module.exports = {
   addComment,
   deleteComment,
   deletePost,
-  getExplore,
-};
+  getExplore };

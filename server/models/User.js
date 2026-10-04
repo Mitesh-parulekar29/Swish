@@ -29,6 +29,8 @@ const userSchema = new mongoose.Schema(
     isPrivate: { type: Boolean, default: false },
     followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    // People who asked to follow this (private) account and are waiting for approval.
+    followRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     postsCount: { type: Number, default: 0, min: 0 },
     isSuspended: { type: Boolean, default: false },

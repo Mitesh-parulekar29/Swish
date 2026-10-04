@@ -6,6 +6,7 @@ const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const postRoutes = require('./routes/postRoutes');
 const userRoutes = require('./routes/userRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 const app = express();
 
@@ -35,6 +36,9 @@ app.use('/api/posts', postRoutes);
 
 // Users API
 app.use('/api/users', userRoutes);
+
+// Notifications API
+app.use('/api/notifications', notificationRoutes);
 
 // Fallback for unknown routes
 app.use((req, res) => {
