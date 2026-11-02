@@ -51,10 +51,32 @@ const createPost = async (req, res) => {
 
 const getFeed = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('following');
+    const scope = req.query.scope === 'all' ? 'all' : 'following';
     const hiddenIds = await getHiddenUserIds(req.user._id); // blocked by me + blocked me
-    const allowedIds = [req.user._id, ...(user.following || [])];
-    const posts = await Post.find({ user: { $in: allowedIds, $nin: hiddenIds } })
+    const user = await User.findById(req.user._id).select('following');
+    const followingIds = user.following || [];
+
+    let authorFilter;
+    if (scope === 'all') {
+      // Campus Feed: verified, not suspended, not blocked, privacy respected
+      const eligibleAuthors = await User.find({
+        _id: { $nin: hiddenIds },
+        isVerified: true,
+        isSuspended: { $ne: true },
+        $or: [
+          { isPrivate: { $ne: true } },
+          { _id: req.user._id },
+          { _id: { $in: followingIds } },
+        ],
+      }).select('_id');
+
+      authorFilter = { user: { $in: eligibleAuthors.map((author) => author._id) } };
+    } else {
+      const allowedIds = [req.user._id, ...followingIds];
+      authorFilter = { user: { $in: allowedIds, $nin: hiddenIds } };
+    }
+
+    const posts = await Post.find(authorFilter)
       .populate('user', 'name username profileImage')
       .sort({ createdAt: -1 })
       .limit(50);

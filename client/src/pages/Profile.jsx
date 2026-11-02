@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
 import { getUser, followUser, unfollowUser, blockUser, unblockUser } from "../features/auth/usersApi";
-import { getUserPosts } from "../features/posts/postsApi";
+import { getUserPosts, mediaUrl } from "../features/posts/postsApi";
 import Avatar from "../components/Avatar";
 import SocialIcon from "../components/SocialIcon";
 import "./Privacy.css";
@@ -197,7 +197,17 @@ export default function Profile() {
           {posts.map((post) => (
             <article className="grid-post" key={post.id}>
               <Link to={`/post/${post.id}`}>
-                {post.image ? <img src={post.image} alt="" /> : <div className="grid-text">{post.caption}</div>}
+                {post.image ? (
+                  <img
+                    src={mediaUrl(post.image)}
+                    alt=""
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                ) : (
+                  <div className="grid-text">{post.caption}</div>
+                )}
               </Link>
             </article>
           ))}

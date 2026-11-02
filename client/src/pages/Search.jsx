@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
 import { searchUsers } from "../features/auth/usersApi";
-import { getExplore } from "../features/posts/postsApi";
+import { getExplore, mediaUrl } from "../features/posts/postsApi";
 import Avatar from "../components/Avatar";
 import SocialIcon from "../components/SocialIcon";
 
@@ -166,9 +166,12 @@ export default function Search() {
                   <Link to={`/post/${post.id || post._id}`}>
                     {post.image ? (
                       <img
-                        src={post.image.startsWith("/") ? `http://localhost:5000${post.image}` : post.image}
+                        src={mediaUrl(post.image)}
                         alt={post.caption || "Campus post"}
                         loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
                       />
                     ) : (
                       <div className="grid-text" style={{ background: "var(--soft)", padding: 14 }}>
