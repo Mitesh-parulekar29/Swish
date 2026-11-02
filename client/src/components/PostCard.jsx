@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import Avatar from "./Avatar";
 import SocialIcon from "./SocialIcon";
-import { addComment, deleteComment, deletePost, getPostLikes, toggleLike } from "../features/posts/postsApi";
+import { addComment, deleteComment, deletePost, getPostLikes, mediaUrl, toggleLike } from "../features/posts/postsApi";
 import { useAuth } from "../features/auth/AuthContext";
 
 function timeAgo(value) {
@@ -152,9 +152,12 @@ export default function PostCard({ post, onChange }) {
       {post.image && (
         <img
           className="post-image"
-          src={post.image.startsWith("/") ? `http://localhost:5000${post.image}` : post.image}
+          src={mediaUrl(post.image)}
           alt="Post"
           onDoubleClick={like}
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+          }}
         />
       )}
 

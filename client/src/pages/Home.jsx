@@ -12,21 +12,45 @@ export default function Home() {
   const [feedScope, setFeedScope] = useState("following"); // 'following' | 'all'
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const [suggestions, setSuggestions] = useState([]);
 
   useEffect(() => {
-    setLoading(true);
-    Promise.all([getFeed(token, feedScope), getSuggestions(token)])
-      .then(([feed, suggested]) => {
-        setPosts(feed?.data?.posts || []);
-        setSuggestions(suggested?.data?.users || []);
+    let active = true;
+    getSuggestions(token)
+      .then((suggested) => {
+        if (active) setSuggestions(suggested?.data?.users || []);
       })
       .catch(() => {
-        setPosts([]);
-        setSuggestions([]);
+        if (active) setSuggestions([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError("");
+    getFeed(token, feedScope)
+      .then((feed) => {
+        if (!active) return;
+        setPosts(feed?.data?.posts || []);
       })
-      .finally(() => setLoading(false));
-  }, [token, feedScope]);
+      .catch((err) => {
+        if (!active) return;
+        setPosts([]);
+        setError(err.message || "Failed to load feed");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token, feedScope, reloadKey]);
 
   return (
     <div className="home-layout">
@@ -67,6 +91,17 @@ export default function Home() {
 
         {loading ? (
           <div className="page-loading">Loading feed…</div>
+        ) : error ? (
+          <div className="feed-empty">
+            <div className="empty-icon">
+              <SocialIcon name="home" size={34} />
+            </div>
+            <h1>Couldn’t load feed</h1>
+            <p>{error}</p>
+            <button className="primary-button" type="button" onClick={() => setReloadKey((key) => key + 1)}>
+              Try again
+            </button>
+          </div>
         ) : posts.length ? (
           posts.map((post) => (
             <PostCard
