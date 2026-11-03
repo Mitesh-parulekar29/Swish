@@ -10,6 +10,7 @@ const {
   deleteComment,
   deletePost,
   getExplore,
+  toggleCommentLike,
 } = require('../controllers/postController');
 const authMiddleware = require('../middleware/authMiddleware');
 const { uploadPostImage } = require('../middleware/uploadMiddleware');
@@ -27,6 +28,7 @@ router.post('/', uploadPostImage, createPost);
 
 router.post('/:id/like', likePost);
 router.post('/:id/comments', addComment);
+router.post('/:id/comments/:commentId/like', toggleCommentLike);
 router.delete('/:id/comments/:commentId', deleteComment);
 
 router.delete('/:id', deletePost);
