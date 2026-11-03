@@ -2,7 +2,15 @@ import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import Avatar from "./Avatar";
 import SocialIcon from "./SocialIcon";
-import { addComment, deleteComment, deletePost, getPostLikes, mediaUrl, toggleLike } from "../features/posts/postsApi";
+import {
+  addComment,
+  deleteComment,
+  deletePost,
+  getPostLikes,
+  mediaUrl,
+  toggleLike,
+  toggleCommentLike,
+} from "../features/posts/postsApi";
 import { useAuth } from "../features/auth/AuthContext";
 
 function timeAgo(value) {
@@ -16,23 +24,174 @@ function timeAgo(value) {
   return `${days}d`;
 }
 
+/** A single comment row (works for both top-level and reply) */
+function CommentRow({
+  comment,
+  postId,
+  currentUser,
+  token,
+  isReply = false,
+  onReply,
+  onDelete,
+  onLikeToggle,
+}) {
+  const [liking, setLiking] = useState(false);
+  const commentUser = comment.user;
+  const isOwn =
+    currentUser?.username === commentUser?.username ||
+    currentUser?.id === (commentUser?.id || commentUser?._id) ||
+    currentUser?._id === (commentUser?.id || commentUser?._id);
+
+  const handleLike = async () => {
+    if (liking) return;
+    setLiking(true);
+    try {
+      const res = await toggleCommentLike(token, postId, comment._id);
+      if (res?.data) {
+        onLikeToggle(comment._id, res.data.liked, res.data.likesCount);
+      }
+    } catch {
+      // silent
+    } finally {
+      setLiking(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
+        fontSize: 13,
+        padding: "4px 0",
+        paddingLeft: isReply ? 36 : 0,
+      }}
+    >
+      {/* Left: avatar + body */}
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flex: 1, minWidth: 0 }}>
+        <Link to={`/profile/${commentUser?.username}`} style={{ flexShrink: 0 }} tabIndex={-1}>
+          <Avatar user={commentUser} size={isReply ? 24 : 28} />
+        </Link>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Link
+            to={`/profile/${commentUser?.username}`}
+            style={{ color: "inherit", textDecoration: "none", fontWeight: 700, marginRight: 6 }}
+          >
+            {commentUser?.username || "member"}
+          </Link>
+          <span style={{ wordBreak: "break-word" }}>{comment.text}</span>
+
+          {/* Actions row */}
+          <div style={{ display: "flex", gap: 10, marginTop: 3, alignItems: "center" }}>
+            <span style={{ color: "var(--muted)", fontSize: 11 }}>{timeAgo(comment.createdAt)}</span>
+
+            {/* Like button */}
+            <button
+              onClick={handleLike}
+              disabled={liking}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                color: comment.isLiked ? "#e11d48" : "var(--muted)",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: liking ? "default" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 3,
+              }}
+              aria-label={comment.isLiked ? "Unlike" : "Like"}
+            >
+              <svg
+                width={11}
+                height={11}
+                viewBox="0 0 24 24"
+                fill={comment.isLiked ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M20.8 8.8c0 5.2-8.8 11-8.8 11S3.2 14 3.2 8.8A4.8 4.8 0 0 1 12 6.1a4.8 4.8 0 0 1 8.8 2.7Z" />
+              </svg>
+              {comment.likesCount > 0 && (
+                <span>{comment.likesCount}</span>
+              )}
+            </button>
+
+            {/* Reply button */}
+            <button
+              onClick={() => onReply(commentUser?.username, comment._id, comment.parentId)}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                color: "var(--muted)",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Reply
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Right: delete */}
+      {isOwn && (
+        <button
+          onClick={() => onDelete(comment._id)}
+          style={{
+            border: "none",
+            background: "none",
+            color: "var(--muted)",
+            cursor: "pointer",
+            fontSize: 12,
+            padding: "0 4px",
+            flexShrink: 0,
+          }}
+          title="Delete"
+          aria-label="Delete comment"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function PostCard({ post, onChange }) {
   const { token, user } = useAuth();
   const [liked, setLiked] = useState(post.isLiked);
   const [likes, setLikes] = useState(post.likesCount || 0);
-  const [comment, setComment] = useState("");
+
+  // All comments (top-level + replies) as a flat list keyed by _id
   const [comments, setComments] = useState(post.comments || []);
-  const [commentsCount, setCommentsCount] = useState(post.commentsCount || (post.comments ? post.comments.length : 0));
+  const [commentsCount, setCommentsCount] = useState(
+    post.commentsCount ||
+      (post.comments ? post.comments.filter((c) => !c.parentId).length : 0)
+  );
   const [showComments, setShowComments] = useState(false);
+
+  // Reply state: { parentId: string, replyToUsername: string } | null
+  const [replyTarget, setReplyTarget] = useState(null);
+
+  const [commentText, setCommentText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [commentError, setCommentError] = useState("");
+
   const [showLikersModal, setShowLikersModal] = useState(false);
   const [likersList, setLikersList] = useState([]);
   const [loadingLikers, setLoadingLikers] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [submittingComment, setSubmittingComment] = useState(false);
 
-  const commentInputRef = useRef(null);
+  const inputRef = useRef(null);
 
-  const like = async () => {
+  /* ---- Post like ---- */
+  const likePost = async () => {
     if (busy) return;
     setBusy(true);
     const nextLiked = !liked;
@@ -52,6 +211,7 @@ export default function PostCard({ post, onChange }) {
     }
   };
 
+  /* ---- Likers modal ---- */
   const handleOpenLikers = async () => {
     setShowLikersModal(true);
     setLoadingLikers(true);
@@ -65,75 +225,136 @@ export default function PostCard({ post, onChange }) {
     }
   };
 
-  const commentSubmit = async (e) => {
+  /* ---- Comment like toggle (callback from CommentRow) ---- */
+  const handleCommentLikeToggle = (commentId, liked, likesCount) => {
+    setComments((prev) =>
+      prev.map((c) =>
+        (c._id || c.id) === commentId ? { ...c, isLiked: liked, likesCount } : c
+      )
+    );
+  };
+
+  /* ---- Reply click: set reply target and focus input ---- */
+  const handleReplyClick = (username, commentId, commentParentId) => {
+    // Always attach to the top-level parent (Instagram style: replies are flat under one thread)
+    const effectiveParentId = commentParentId || commentId;
+    setReplyTarget({ parentId: effectiveParentId, replyToUsername: username });
+    setCommentText(`@${username} `);
+    setShowComments(true);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  /* ---- Cancel reply ---- */
+  const cancelReply = () => {
+    setReplyTarget(null);
+    setCommentText("");
+  };
+
+  /* ---- Submit comment or reply ---- */
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!comment.trim() || submittingComment) return;
-    setSubmittingComment(true);
-    const textToSend = comment.trim();
-    setComment("");
+    if (!commentText.trim() || submitting) return;
+    setSubmitting(true);
+    setCommentError("");
+    const textToSend = commentText.trim();
+    setCommentText("");
+    const parentId = replyTarget?.parentId || null;
+    setReplyTarget(null);
+
     try {
-      const result = await addComment(token, post.id || post._id, textToSend);
+      const result = await addComment(token, post.id || post._id, textToSend, parentId);
       if (result?.data) {
-        setCommentsCount(result.data.commentsCount);
+        if (result.data.commentsCount !== undefined) {
+          setCommentsCount(result.data.commentsCount);
+        }
         if (result.data.comment) {
           setComments((prev) => [...prev, result.data.comment]);
-        } else if (result.data.comments) {
-          setComments(result.data.comments);
+        } else {
+          // Fallback: build optimistic comment
+          setComments((prev) => [
+            ...prev,
+            {
+              _id: `temp-${Date.now()}`,
+              text: textToSend,
+              parentId: parentId || null,
+              createdAt: new Date().toISOString(),
+              likesCount: 0,
+              isLiked: false,
+              user: {
+                id: user?.id || user?._id,
+                _id: user?.id || user?._id,
+                name: user?.name,
+                username: user?.username,
+                profileImage: user?.profileImage,
+              },
+            },
+          ]);
         }
         setShowComments(true);
       }
     } catch (err) {
-      console.error(err);
+      setCommentError(err.message || "Failed to post comment");
+      setCommentText(textToSend);
+      setReplyTarget(parentId ? { parentId, replyToUsername: "" } : null);
     } finally {
-      setSubmittingComment(false);
+      setSubmitting(false);
     }
   };
 
-  const handleReply = (username) => {
-    setShowComments(true);
-    setComment(`@${username} `);
-    setTimeout(() => {
-      commentInputRef.current?.focus();
-    }, 50);
-  };
-
-  const handleRemoveComment = async (commentId) => {
+  /* ---- Delete comment ---- */
+  const handleDeleteComment = async (commentId) => {
     try {
-      await deleteComment(token, post.id || post._id, commentId);
-      setComments((prev) => prev.filter((c) => (c.id || c._id) !== commentId));
-      setCommentsCount((prev) => Math.max(0, prev - 1));
+      const res = await deleteComment(token, post.id || post._id, commentId);
+      // Remove the comment and all its replies
+      setComments((prev) =>
+        prev.filter((c) => {
+          const id = c._id || c.id;
+          return id !== commentId && String(c.parentId) !== String(commentId);
+        })
+      );
+      if (res?.data?.commentsCount !== undefined) {
+        setCommentsCount(res.data.commentsCount);
+      } else {
+        setCommentsCount((prev) => Math.max(0, prev - 1));
+      }
     } catch (err) {
       console.error(err);
     }
   };
 
-  const remove = async () => {
+  /* ---- Delete post ---- */
+  const handleDeletePost = async () => {
     if (!window.confirm("Delete this post?")) return;
     await deletePost(token, post.id || post._id);
     onChange?.(post.id || post._id);
   };
 
+  /* ---- Caption rendering (hashtag links) ---- */
   const renderCaption = (text) => {
     if (!text) return null;
-    const parts = text.split(/(#[a-zA-Z0-9_-]+)/g);
-    return parts.map((part, index) => {
-      if (part.startsWith("#")) {
-        return (
-          <Link
-            key={index}
-            to={`/search?tag=${encodeURIComponent(part.replace('#', ''))}`}
-            style={{ color: "#2563eb", fontWeight: 600, textDecoration: "none" }}
-          >
-            {part}{" "}
-          </Link>
-        );
-      }
-      return part;
-    });
+    return text.split(/(#[a-zA-Z0-9_-]+)/g).map((part, i) =>
+      part.startsWith("#") ? (
+        <Link
+          key={i}
+          to={`/search?tag=${encodeURIComponent(part.replace("#", ""))}`}
+          style={{ color: "#2563eb", fontWeight: 600, textDecoration: "none" }}
+        >
+          {part}{" "}
+        </Link>
+      ) : (
+        part
+      )
+    );
   };
+
+  /* ---- Organize comments into top-level + replies ---- */
+  const topLevel = comments.filter((c) => !c.parentId);
+  const repliesFor = (parentId) =>
+    comments.filter((c) => c.parentId && String(c.parentId) === String(parentId));
 
   return (
     <article className="post-card">
+      {/* ── Post header ── */}
       <div className="post-header">
         <Link to={`/profile/${post.user?.username}`} className="user-inline">
           <Avatar user={post.user} size={42} />
@@ -143,37 +364,37 @@ export default function PostCard({ post, onChange }) {
           </div>
         </Link>
         {user?.username === post.user?.username && (
-          <button className="icon-button" onClick={remove} title="Delete">
+          <button className="icon-button" onClick={handleDeletePost} title="Delete post">
             •••
           </button>
         )}
       </div>
 
+      {/* ── Post image ── */}
       {post.image && (
         <img
           className="post-image"
           src={mediaUrl(post.image)}
           alt="Post"
-          onDoubleClick={like}
-          onError={(e) => {
-            e.currentTarget.style.display = "none";
-          }}
+          onDoubleClick={likePost}
+          onError={(e) => { e.currentTarget.style.display = "none"; }}
         />
       )}
 
+      {/* ── Action buttons ── */}
       <div className="post-actions">
         <button
           className={`icon-button ${liked ? "liked" : ""}`}
-          onClick={like}
+          onClick={likePost}
           aria-label="Like"
           style={{ color: liked ? "#e11d48" : "inherit" }}
         >
-          <SocialIcon name={liked ? "heart" : "heart"} />
+          <SocialIcon name="heart" />
         </button>
         <button
           className="icon-button"
           onClick={() => setShowComments((prev) => !prev)}
-          aria-label="Comment"
+          aria-label="Toggle comments"
         >
           <SocialIcon name="message" />
         </button>
@@ -181,10 +402,11 @@ export default function PostCard({ post, onChange }) {
         <span className="post-time">{timeAgo(post.createdAt)}</span>
       </div>
 
-      {/* Clickable Likes count opens Likers modal */}
+      {/* ── Likes count (opens likers modal) ── */}
       <div className="post-meta">
         <button
           onClick={handleOpenLikers}
+          disabled={likes === 0}
           style={{
             background: "none",
             border: "none",
@@ -194,12 +416,12 @@ export default function PostCard({ post, onChange }) {
             fontWeight: 700,
             color: "var(--text)",
           }}
-          disabled={likes === 0}
         >
           {likes} {likes === 1 ? "like" : "likes"}
         </button>
       </div>
 
+      {/* ── Caption ── */}
       {post.caption && (
         <p className="post-caption">
           <Link
@@ -212,79 +434,137 @@ export default function PostCard({ post, onChange }) {
         </p>
       )}
 
+      {/* ── View / hide comments toggle ── */}
       {commentsCount > 0 && (
         <button
           className="comments-link"
           onClick={() => setShowComments((prev) => !prev)}
           style={{ cursor: "pointer", marginTop: 4, display: "block" }}
         >
-          {showComments ? "Hide comments" : `View all ${commentsCount} comments`}
+          {showComments ? "Hide comments" : `View all ${commentsCount} comment${commentsCount !== 1 ? "s" : ""}`}
         </button>
       )}
 
-      {/* Expanded Comments Thread with Reply and Delete */}
-      {showComments && comments.length > 0 && (
-        <div className="inline-comments-list" style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-          {comments.map((c) => {
-            const commentUser = c.user;
-            const isOwn = user?.username === commentUser?.username || user?.id === commentUser?.id || user?._id === commentUser?._id;
-            return (
-              <div
-                key={c.id || c._id || Math.random()}
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", fontSize: 13, padding: "2px 0" }}
-              >
-                <div>
-                  <Link
-                    to={`/profile/${commentUser?.username}`}
-                    style={{ color: "inherit", textDecoration: "none", fontWeight: 700, marginRight: 6 }}
-                  >
-                    {commentUser?.username || "member"}
-                  </Link>
-                  <span>{c.text}</span>
-                  <div style={{ display: "flex", gap: 10, marginTop: 2, alignItems: "center" }}>
-                    <span style={{ color: "var(--muted)", fontSize: 11 }}>{timeAgo(c.createdAt)}</span>
-                    <button
-                      onClick={() => handleReply(commentUser?.username)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        padding: 0,
-                        color: "var(--muted)",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Reply
-                    </button>
-                  </div>
-                </div>
-                {isOwn && (
-                  <button
-                    onClick={() => handleRemoveComment(c.id || c._id)}
-                    style={{ border: "none", background: "none", color: "var(--muted)", cursor: "pointer", fontSize: 12, padding: "0 4px" }}
-                    title="Delete comment"
-                  >
-                    ✕
-                  </button>
-                )}
+      {/* ── Comments thread ── */}
+      {showComments && (
+        <div
+          className="inline-comments-list"
+          style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 2 }}
+        >
+          {topLevel.length === 0 ? (
+            <p style={{ color: "var(--muted)", fontSize: 13, margin: 0 }}>
+              No comments yet. Be the first!
+            </p>
+          ) : (
+            topLevel.map((c) => (
+              <div key={c._id || c.id}>
+                {/* Top-level comment */}
+                <CommentRow
+                  comment={c}
+                  postId={post.id || post._id}
+                  currentUser={user}
+                  token={token}
+                  isReply={false}
+                  onReply={handleReplyClick}
+                  onDelete={handleDeleteComment}
+                  onLikeToggle={handleCommentLikeToggle}
+                />
+
+                {/* Replies under this comment */}
+                {repliesFor(c._id || c.id).map((reply) => (
+                  <CommentRow
+                    key={reply._id || reply.id}
+                    comment={reply}
+                    postId={post.id || post._id}
+                    currentUser={user}
+                    token={token}
+                    isReply={true}
+                    onReply={handleReplyClick}
+                    onDelete={handleDeleteComment}
+                    onLikeToggle={handleCommentLikeToggle}
+                  />
+                ))}
               </div>
-            );
-          })}
+            ))
+          )}
         </div>
       )}
 
-      <form className="comment-form" onSubmit={commentSubmit}>
+      {/* ── Comment submission error ── */}
+      {commentError && (
+        <p style={{ color: "#c00", fontSize: 12, margin: "6px 0 0" }}>{commentError}</p>
+      )}
+
+      {/* ── Reply banner ── */}
+      {replyTarget && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            fontSize: 12,
+            color: "var(--muted)",
+            padding: "6px 0 0",
+          }}
+        >
+          <span>
+            Replying to{" "}
+            <strong style={{ color: "var(--text)" }}>@{replyTarget.replyToUsername}</strong>
+          </span>
+          <button
+            onClick={cancelReply}
+            style={{
+              border: "none",
+              background: "none",
+              color: "var(--muted)",
+              cursor: "pointer",
+              fontSize: 12,
+              padding: 0,
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* ── Comment/reply input ── */}
+      <form
+        className="comment-form"
+        onSubmit={handleSubmit}
+        style={{ display: "flex", alignItems: "center", gap: 6 }}
+      >
         <input
-          ref={commentInputRef}
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          placeholder="Add a comment…"
-          disabled={submittingComment}
+          ref={inputRef}
+          value={commentText}
+          onChange={(e) => {
+            setCommentText(e.target.value);
+            if (commentError) setCommentError("");
+          }}
+          placeholder={replyTarget ? `Reply to @${replyTarget.replyToUsername}…` : "Add a comment…"}
+          disabled={submitting}
+          style={{ flex: 1 }}
         />
+        {commentText.trim() && (
+          <button
+            type="submit"
+            disabled={submitting}
+            style={{
+              border: "none",
+              background: "none",
+              color: "#2563eb",
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: submitting ? "default" : "pointer",
+              padding: "0 4px",
+              flexShrink: 0,
+            }}
+          >
+            {submitting ? "…" : "Post"}
+          </button>
+        )}
       </form>
 
-      {/* Likers List Modal (#10) */}
+      {/* ── Likers modal ── */}
       {showLikersModal && (
         <div
           style={{
@@ -332,7 +612,6 @@ export default function PostCard({ post, onChange }) {
                 ✕
               </button>
             </div>
-
             <div style={{ padding: "10px 18px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
               {loadingLikers ? (
                 <div style={{ textAlign: "center", padding: "20px 0", color: "var(--muted)", fontSize: 13 }}>

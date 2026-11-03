@@ -8,7 +8,7 @@ const serializePost = (post) => ({
   image: post.image || '',
   caption: post.caption || '',
   likesCount: post.likes?.length || 0,
-  commentsCount: post.comments?.length || 0,
+  commentsCount: post.comments?.filter((c) => !c.parentId).length || 0,
   isLiked: false,
   createdAt: post.createdAt,
   user: post.user && {
@@ -17,6 +17,24 @@ const serializePost = (post) => ({
     username: post.user.username,
     profileImage: post.user.profileImage,
   },
+});
+
+const serializeComment = (c, currentUserId) => ({
+  _id: c._id,
+  text: c.text,
+  parentId: c.parentId || null,
+  createdAt: c.createdAt,
+  likesCount: c.likes?.length || 0,
+  isLiked: currentUserId ? c.likes?.some((id) => id.equals(currentUserId)) : false,
+  user: c.user && typeof c.user === 'object' && c.user.username
+    ? {
+        id: c.user._id,
+        _id: c.user._id,
+        name: c.user.name,
+        username: c.user.username,
+        profileImage: c.user.profileImage,
+      }
+    : null,
 });
 
 const createPost = async (req, res) => {
@@ -78,12 +96,19 @@ const getFeed = async (req, res) => {
 
     const posts = await Post.find(authorFilter)
       .populate('user', 'name username profileImage')
+      .populate('comments.user', 'name username profileImage')
       .sort({ createdAt: -1 })
       .limit(50);
 
     return res.json({
       success: true,
-      data: { posts: posts.map((post) => ({ ...serializePost(post), isLiked: post.likes.some((id) => id.equals(req.user._id)) })) },
+      data: {
+        posts: posts.map((post) => ({
+          ...serializePost(post),
+          isLiked: post.likes.some((id) => id.equals(req.user._id)),
+          comments: post.comments.map((c) => serializeComment(c, req.user._id)),
+        })),
+      },
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to load feed' });
@@ -109,13 +134,18 @@ const getUserPosts = async (req, res) => {
 
     const posts = await Post.find({ user: user._id })
       .populate('user', 'name username profileImage')
+      .populate('comments.user', 'name username profileImage')
       .sort({ createdAt: -1 })
       .limit(100);
 
     return res.json({
       success: true,
       data: {
-        posts: posts.map((post) => ({ ...serializePost(post), isLiked: post.likes.some((id) => id.equals(req.user._id)) })),
+        posts: posts.map((post) => ({
+          ...serializePost(post),
+          isLiked: post.likes.some((id) => id.equals(req.user._id)),
+          comments: post.comments.map((c) => serializeComment(c, req.user._id)),
+        })),
         isPrivate: false,
       },
     });
@@ -127,12 +157,15 @@ const getUserPosts = async (req, res) => {
 
 const getPost = async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id).populate('user', 'name username profileImage');
+    const post = await Post.findById(req.params.id)
+      .populate('user', 'name username profileImage')
+      .populate('comments.user', 'name username profileImage');
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
     if (await hasBlocked(post.user?._id, req.user._id)) {
       return res.status(404).json({ success: false, message: 'Post not found' });
     }
-    return res.json({ success: true, data: { post: { ...serializePost(post), isLiked: post.likes.some((id) => id.equals(req.user._id)), comments: post.comments } } });
+    const comments = post.comments.map((c) => serializeComment(c, req.user._id));
+    return res.json({ success: true, data: { post: { ...serializePost(post), isLiked: post.likes.some((id) => id.equals(req.user._id)), comments } } });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to load post' });
   }
@@ -161,15 +194,47 @@ const addComment = async (req, res) => {
   try {
     const text = String(req.body.text || '').trim();
     if (!text) return res.status(400).json({ success: false, message: 'Comment cannot be empty' });
+    const parentId = req.body.parentId || null;
+
     const post = await Post.findById(req.params.id);
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
     if (await hasBlocked(post.user, req.user._id)) {
       return res.status(403).json({ success: false, message: 'You cannot interact with this post' });
     }
-    post.comments.push({ user: req.user._id, text });
+
+    // Validate parentId if provided
+    if (parentId) {
+      const parentComment = post.comments.id(parentId);
+      if (!parentComment) return res.status(404).json({ success: false, message: 'Parent comment not found' });
+      // Replies cannot have a parentId that is itself a reply (only 2 levels deep)
+      // We allow replying to a reply but store parentId as the top-level comment's _id
+      // (Instagram style: all replies in a thread share the same parent)
+      const effectiveParentId = parentComment.parentId || parentComment._id;
+      post.comments.push({ user: req.user._id, text, parentId: effectiveParentId });
+    } else {
+      post.comments.push({ user: req.user._id, text, parentId: null });
+    }
+
     await post.save();
-    await createNotification({ recipient: post.user, actor: req.user, type: 'comment', post: post._id, text });
-    return res.status(201).json({ success: true, data: { commentsCount: post.comments.length } });
+
+    // Populate all comment users
+    await post.populate('comments.user', 'name username profileImage');
+    const newComment = post.comments[post.comments.length - 1];
+
+    // Comment count = only top-level comments
+    const topLevelCount = post.comments.filter((c) => !c.parentId).length;
+
+    if (!parentId) {
+      await createNotification({ recipient: post.user, actor: req.user, type: 'comment', post: post._id, text });
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        commentsCount: topLevelCount,
+        comment: serializeComment(newComment, req.user._id),
+      },
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to add comment' });
   }
@@ -234,10 +299,11 @@ const deleteComment = async (req, res) => {
     post.comments.pull(req.params.commentId);
     await post.save();
 
+    const topLevelCount = post.comments.filter((c) => !c.parentId).length;
     return res.json({
       success: true,
       message: 'Comment deleted',
-      data: { commentsCount: post.comments.length },
+      data: { commentsCount: topLevelCount },
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to delete comment' });
@@ -308,6 +374,34 @@ const getExplore = async (req, res) => {
 };
 
 
+const toggleCommentLike = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+
+    const comment = post.comments.id(req.params.commentId);
+    if (!comment) return res.status(404).json({ success: false, message: 'Comment not found' });
+
+    const alreadyLiked = comment.likes.some((id) => id.equals(req.user._id));
+    if (alreadyLiked) {
+      comment.likes = comment.likes.filter((id) => !id.equals(req.user._id));
+    } else {
+      comment.likes.push(req.user._id);
+    }
+    await post.save();
+
+    return res.json({
+      success: true,
+      data: {
+        liked: !alreadyLiked,
+        likesCount: comment.likes.length,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to toggle comment like' });
+  }
+};
+
 module.exports = { createPost,
   getFeed,
   getUserPosts,
@@ -317,4 +411,5 @@ module.exports = { createPost,
   addComment,
   deleteComment,
   deletePost,
-  getExplore };
+  getExplore,
+  toggleCommentLike };
