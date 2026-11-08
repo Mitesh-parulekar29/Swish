@@ -4,6 +4,7 @@ import { useAuth } from "../features/auth/AuthContext";
 import { createPost } from "../features/posts/postsApi";
 import Avatar from "../components/Avatar";
 import SocialIcon from "../components/SocialIcon";
+import { useToast } from "../features/toast/ToastContext";
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -11,6 +12,7 @@ const MAX_BYTES = 5 * 1024 * 1024;
 export default function Create() {
   const { token, user } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const fileInputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState("");
@@ -70,11 +72,13 @@ export default function Create() {
     try {
       await createPost(token, { caption: trimmed, image: file || undefined });
       setSuccess("Post shared");
+      toast.success("Post shared");
       setCaption("");
       clearImage();
       navigate("/home", { replace: true });
     } catch (err) {
       setError(err.message || "Failed to create post");
+      toast.error(err.message || "Failed to create post");
     } finally {
       setLoading(false);
     }

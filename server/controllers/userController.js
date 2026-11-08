@@ -2,13 +2,14 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const createNotification = require('../utils/createNotification');
 const { includesId, getHiddenUserIds } = require('../utils/blockHelpers');
+const { escapeRegex } = require('../utils/validators');
 
 const publicUser = (user) => user.toPublicJSON();
 
 // GET /api/users/search?q=
 const searchUsers = async (req, res) => {
   try {
-    const q = String(req.query.q || '').trim();
+    const q = escapeRegex(String(req.query.q || '').trim().slice(0, 50));
     if (!q) return res.json({ success: true, data: { users: [] } });
 
     const users = await User.find({
@@ -308,7 +309,12 @@ const updateProfile = async (req, res) => {
     if (req.file) {
       updates.profileImage = `/uploads/profiles/${req.file.filename}`;
     } else if (typeof profileImage === 'string' && profileImage.trim()) {
-      updates.profileImage = profileImage.trim();
+      const url = profileImage.trim();
+      // Only plain http(s) URLs or our own /uploads paths - blocks javascript:/data: URLs.
+      if (!/^(https?:\/\/\S+|\/uploads\/\S+)$/i.test(url)) {
+        return res.status(400).json({ success: false, message: 'Profile image must be a valid http(s) URL' });
+      }
+      updates.profileImage = url;
     }
 
     const user = await User.findByIdAndUpdate(req.user._id, updates, { new: true, runValidators: true });

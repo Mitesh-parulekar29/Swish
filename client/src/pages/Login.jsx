@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { loginUser } from "../features/auth/authApi";
 import { useAuth } from "../features/auth/AuthContext";
+import ThemeToggle from "../components/ThemeToggle";
+import { useToast } from "../features/toast/ToastContext";
 import "./Home.css";
 
 function Login() {
@@ -11,6 +13,7 @@ function Login() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -21,9 +24,11 @@ function Login() {
     try {
       const result = await loginUser({ email, password });
       login(result.data.token);
+      toast.success("Welcome back!");
       navigate("/home", { replace: true });
     } catch (err) {
       setError(err.message);
+      toast.error(err.message);
     } finally {
       setLoading(false);
     }
@@ -31,6 +36,7 @@ function Login() {
 
   return (
     <div className="auth-page fade-in">
+      <ThemeToggle className="auth-theme-toggle" />
       <div className="auth-box">
         <div className="auth-brand">swish</div>
 

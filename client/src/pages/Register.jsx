@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { registerUser } from "../features/auth/authApi";
+import ThemeToggle from "../components/ThemeToggle";
+import { useToast } from "../features/toast/ToastContext";
 import "./Home.css";
 
 function Register() {
@@ -14,6 +16,7 @@ function Register() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const toast = useToast();
 
   function updateField(e) {
     setForm({
@@ -30,9 +33,11 @@ function Register() {
 
     try {
       await registerUser(form);
+      toast.success("Account created. Please sign in.");
       navigate("/login", { replace: true });
     } catch (err) {
       setError(err.message);
+      toast.error(err.message);
     } finally {
       setLoading(false);
     }
@@ -40,6 +45,7 @@ function Register() {
 
   return (
     <div className="auth-page fade-in">
+      <ThemeToggle className="auth-theme-toggle" />
       <div className="auth-box">
         <div className="auth-brand">swish</div>
 

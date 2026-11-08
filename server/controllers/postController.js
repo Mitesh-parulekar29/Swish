@@ -2,6 +2,10 @@ const Post = require('../models/Post');
 const User = require('../models/User');
 const createNotification = require('../utils/createNotification');
 const { includesId, hasBlocked, getHiddenUserIds } = require('../utils/blockHelpers');
+const { escapeRegex } = require('../utils/validators');
+
+const MAX_CAPTION = 2200;
+const MAX_COMMENT = 500;
 
 const serializePost = (post) => ({
   id: post._id,
@@ -42,6 +46,13 @@ const createPost = async (req, res) => {
     const { caption = '', image = '' } = req.body;
     if (typeof caption !== 'string' || typeof image !== 'string') {
       return res.status(400).json({ success: false, message: 'Invalid post data' });
+    }
+    if (caption.length > MAX_CAPTION) {
+      return res.status(400).json({ success: false, message: `Caption must be ${MAX_CAPTION} characters or fewer` });
+    }
+    // Remote image URLs must be plain http(s) - blocks javascript:/data: URLs.
+    if (image.trim() && !/^https?:\/\/\S+$/i.test(image.trim())) {
+      return res.status(400).json({ success: false, message: 'Image must be a valid http(s) URL' });
     }
 
     const hasUploadedFile = Boolean(req.file);
@@ -194,6 +205,9 @@ const addComment = async (req, res) => {
   try {
     const text = String(req.body.text || '').trim();
     if (!text) return res.status(400).json({ success: false, message: 'Comment cannot be empty' });
+    if (text.length > MAX_COMMENT) {
+      return res.status(400).json({ success: false, message: `Comments are limited to ${MAX_COMMENT} characters` });
+    }
     const parentId = req.body.parentId || null;
 
     const post = await Post.findById(req.params.id);
@@ -316,11 +330,12 @@ const getExplore = async (req, res) => {
     let filter = {};
 
     if (tag) {
-      filter.tags = tag.toLowerCase().replace('#', '');
+      filter.tags = String(tag).toLowerCase().replace('#', '').slice(0, 50);
     } else if (q) {
+      const safeQ = escapeRegex(String(q).slice(0, 50));
       filter.$or = [
-        { caption: { $regex: q, $options: 'i' } },
-        { tags: { $regex: q, $options: 'i' } },
+        { caption: { $regex: safeQ, $options: 'i' } },
+        { tags: { $regex: safeQ, $options: 'i' } },
       ];
     }
 

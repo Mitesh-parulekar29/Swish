@@ -4,6 +4,8 @@ import { updateProfile, updatePrivacy, getBlockedUsers, unblockUser } from "../f
 import { changePassword } from "../features/auth/authApi";
 import Avatar from "../components/Avatar";
 import SocialIcon from "../components/SocialIcon";
+import { useTheme } from "../features/theme/ThemeContext";
+import { useToast } from "../features/toast/ToastContext";
 import "./Privacy.css";
 
 const TABS = [
@@ -11,9 +13,11 @@ const TABS = [
   { id: "password", label: "Change password", icon: "lock" },
   { id: "privacy", label: "Account privacy", icon: "globe" },
   { id: "blocked", label: "Blocked users", icon: "x" },
+  { id: "appearance", label: "Appearance", icon: "globe" },
 ];
 
 function EditProfileForm({ user, token, setUser }) {
+  const toast = useToast();
   const fileInputRef = useRef(null);
   const [fields, setFields] = useState({
     name: user?.name || "",
@@ -52,6 +56,7 @@ function EditProfileForm({ user, token, setUser }) {
       const result = await updateProfile(token, payload);
       setUser(result.data.user);
       setSuccess("Profile updated");
+      toast.success("Profile updated");
       setFile(null);
     } catch (err) {
       setError(err.message);
@@ -99,6 +104,7 @@ function EditProfileForm({ user, token, setUser }) {
 }
 
 function ChangePasswordForm({ token }) {
+  const toast = useToast();
   const [fields, setFields] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -110,8 +116,8 @@ function ChangePasswordForm({ token }) {
     e.preventDefault();
     setError("");
     setSuccess("");
-    if (fields.newPassword.length < 8) {
-      setError("New password must be at least 8 characters long");
+    if (fields.newPassword.length < 8 || !/[A-Za-z]/.test(fields.newPassword) || !/\d/.test(fields.newPassword)) {
+      setError("New password must be at least 8 characters and include a letter and a number");
       return;
     }
     if (fields.newPassword !== fields.confirmPassword) {
@@ -122,6 +128,7 @@ function ChangePasswordForm({ token }) {
     try {
       await changePassword(token, fields);
       setSuccess("Password updated");
+      toast.success("Password updated");
       setFields({ currentPassword: "", newPassword: "", confirmPassword: "" });
     } catch (err) {
       setError(err.message);
@@ -144,7 +151,7 @@ function ChangePasswordForm({ token }) {
         Re-enter new password
         <input type="password" autoComplete="new-password" value={fields.confirmPassword} onChange={update("confirmPassword")} minLength={8} required />
       </label>
-      <p className="field-hint">At least 8 characters.</p>
+      <p className="field-hint">At least 8 characters, with a letter and a number.</p>
 
       {error && <p className="form-error">{error}</p>}
       {success && <p className="form-success">{success}</p>}
@@ -154,6 +161,7 @@ function ChangePasswordForm({ token }) {
 }
 
 function PrivacySettings({ user, token, setUser }) {
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -164,6 +172,7 @@ function PrivacySettings({ user, token, setUser }) {
     try {
       const result = await updatePrivacy(token, isPrivate);
       setUser(result.data.user);
+      toast.success(isPrivate ? "Your account is now private" : "Your account is now public");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -206,7 +215,32 @@ function PrivacySettings({ user, token, setUser }) {
   );
 }
 
+function AppearanceSettings() {
+  const { theme, setTheme } = useTheme();
+  const options = [
+    ["system", "System", "Match your device setting."],
+    ["light", "Light", "Always use the light theme."],
+    ["dark", "Dark", "Always use the dark theme."],
+  ];
+  return (
+    <div className="settings-card">
+      <div className="privacy-options">
+        {options.map(([value, label, hint]) => (
+          <button key={value} type="button" className={`privacy-option ${theme === value ? "active" : ""}`} onClick={() => setTheme(value)}>
+            <div>
+              <strong>{label}</strong>
+              <span>{hint}</span>
+            </div>
+            {theme === value && <SocialIcon name="check" size={18} />}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function BlockedUsers({ token }) {
+  const toast = useToast();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -227,6 +261,7 @@ function BlockedUsers({ token }) {
     try {
       await unblockUser(token, id);
       setUsers((list) => list.filter((u) => u.id !== id)); // remove from the list
+      toast.success("User unblocked");
     } catch (err) {
       setError(err.message);
     }
@@ -283,6 +318,7 @@ export default function Settings() {
       {tab === "password" && <ChangePasswordForm token={token} />}
       {tab === "privacy" && <PrivacySettings user={user} token={token} setUser={setUser} />}
       {tab === "blocked" && <BlockedUsers token={token} />}
+      {tab === "appearance" && <AppearanceSettings />}
     </section>
   );
 }
