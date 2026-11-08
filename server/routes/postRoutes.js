@@ -14,6 +14,7 @@ const {
 } = require('../controllers/postController');
 const authMiddleware = require('../middleware/authMiddleware');
 const { uploadPostImage } = require('../middleware/uploadMiddleware');
+const { writeLimiter } = require('../middleware/securityMiddleware');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -24,10 +25,10 @@ router.get('/user/:username', getUserPosts);
 router.get('/:id', getPost);
 router.get('/:id/likes', getPostLikes);
 
-router.post('/', uploadPostImage, createPost);
+router.post('/', writeLimiter, uploadPostImage, createPost);
 
 router.post('/:id/like', likePost);
-router.post('/:id/comments', addComment);
+router.post('/:id/comments', writeLimiter, addComment);
 router.post('/:id/comments/:commentId/like', toggleCommentLike);
 router.delete('/:id/comments/:commentId', deleteComment);
 

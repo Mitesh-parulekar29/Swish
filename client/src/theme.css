@@ -1,0 +1,45 @@
+/* Dark theme. Variables drive the app shell; the overrides below cover the few
+   hard-coded light colours in Social.css / Home.css / index.css. */
+:root[data-theme="dark"]{
+  --bg:#0f0f10;--panel:#0f0f10;--text:#f2f2f2;--muted:#9a9a9f;--line:#2a2a2d;--soft:#1c1c1f;--accent:#f2f2f2;
+  color-scheme:dark;
+}
+html[data-theme="dark"] body{background:var(--bg);color:var(--text)}
+html[data-theme="dark"] .avatar{background:#2a2a2d;color:#cfcfd2}
+html[data-theme="dark"] .post-image{background:#1c1c1f}
+html[data-theme="dark"] .primary-button{background:var(--accent);color:#0f0f10;border-color:var(--accent)}
+html[data-theme="dark"] .create-page-card input,
+html[data-theme="dark"] .create-page-card textarea{background:var(--soft);color:var(--text);border-color:var(--line)}
+html[data-theme="dark"] .mobile-header{background:rgba(15,15,16,.96)}
+html[data-theme="dark"] .mobile-nav{background:var(--bg)}
+html[data-theme="dark"] .form-error{color:#ff6b6b}
+html[data-theme="dark"] .icon-button.liked{color:#ff5a5f}
+html[data-theme="dark"] .toast{box-shadow:0 8px 24px rgba(0,0,0,.5)}
+
+/* Login / register (Home.css uses fixed colours) */
+html[data-theme="dark"] .app,
+html[data-theme="dark"] .auth-page{background:var(--bg);color:var(--text)}
+html[data-theme="dark"] .auth-box h1,
+html[data-theme="dark"] .auth-brand,
+html[data-theme="dark"] .auth-switch button{color:var(--text)}
+html[data-theme="dark"] .auth-subtitle,
+html[data-theme="dark"] .auth-switch{color:var(--muted)}
+html[data-theme="dark"] .auth-box input,
+html[data-theme="dark"] .auth-box select{background:var(--soft);color:var(--text);border-color:var(--line)}
+html[data-theme="dark"] .auth-box input:focus,
+html[data-theme="dark"] .auth-box select:focus{border-color:var(--text)}
+html[data-theme="dark"] .auth-box form > button{background:var(--accent);color:#0f0f10}
+html[data-theme="dark"] .auth-box form > button:hover{background:#d8d8d8}
+html[data-theme="dark"] .auth-error{color:#ff6b6b}
+
+.theme-toggle{color:var(--text)}
+.auth-theme-toggle{position:fixed;top:14px;right:14px;z-index:30}
+
+/* Settings, profile menu, notifications additions */
+html[data-theme="dark"] .create-page-card input,
+html[data-theme="dark"] .create-page-card textarea,
+html[data-theme="dark"] .settings-card input,
+html[data-theme="dark"] .settings-card textarea{background:var(--soft);color:var(--text);border-color:var(--line)}
+html[data-theme="dark"] .settings-tab.active{background:var(--text);color:#0f0f10;border-color:var(--text)}
+html[data-theme="dark"] .form-success{color:#4ade80}
+html[data-theme="dark"] .profile-menu-popup button.danger{color:#ff6b6b}

@@ -2,6 +2,8 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../features/auth/AuthContext";
 import SocialIcon from "./SocialIcon";
 import Avatar from "./Avatar";
+import ThemeToggle from "./ThemeToggle";
+import { useToast } from "../features/toast/ToastContext";
 import "./Social.css";
 
 const links = [
@@ -16,6 +18,8 @@ const links = [
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const toast = useToast();
+  const handleLogout = () => { logout(); toast.info("You have been logged out"); };
   return (
     <div className="social-app">
       <aside className="social-sidebar">
@@ -28,14 +32,15 @@ export default function Layout() {
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <ThemeToggle withLabel />
           <NavLink to="/settings" className="social-nav"><SocialIcon name="menu" size={23} /><span>Settings</span></NavLink>
-          <button className="social-nav logout-button" onClick={logout}><Avatar user={user} size={25} /><span>Log out</span></button>
+          <button className="social-nav logout-button" onClick={handleLogout}><Avatar user={user} size={25} /><span>Log out</span></button>
         </div>
       </aside>
       <main className="social-main">
         <header className="mobile-header">
           <NavLink to="/home" className="brand">swish</NavLink>
-          <NavLink to="/profile"><Avatar user={user} size={30} /></NavLink>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}><ThemeToggle /><NavLink to="/profile"><Avatar user={user} size={30} /></NavLink></div>
         </header>
         <Outlet key={location.pathname} />
       </main>
