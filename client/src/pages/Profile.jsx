@@ -5,11 +5,13 @@ import { getUser, followUser, unfollowUser, blockUser, unblockUser } from "../fe
 import { getUserPosts, mediaUrl } from "../features/posts/postsApi";
 import Avatar from "../components/Avatar";
 import SocialIcon from "../components/SocialIcon";
+import { useToast } from "../features/toast/ToastContext";
 import "./Privacy.css";
 
 export default function Profile() {
   const { username } = useParams();
   const { token, user: me } = useAuth();
+  const toast = useToast();
   const target = username || me?.username;
 
   const [profile, setProfile] = useState(null);
@@ -86,8 +88,11 @@ export default function Profile() {
       if (!isFollowing && wasFollowing) change = -1;
 
       setProfile((p) => ({ ...p, isFollowing, isRequested, followersCount: p.followersCount + change }));
+      if (isFollowing) toast.success(`You are now following @${profile.username}`);
+      else if (isRequested) toast.info("Follow request sent");
+      else toast.info(`Unfollowed @${profile.username}`);
     } catch (err) {
-      window.alert(err.message);
+      toast.error(err.message);
     }
   };
 
@@ -99,8 +104,9 @@ export default function Profile() {
     try {
       await blockUser(token, profile.id);
       await refreshProfile();
+      toast.success(`Blocked @${profile.username}`);
     } catch (err) {
-      window.alert(err.message);
+      toast.error(err.message);
     }
   };
 
@@ -109,8 +115,9 @@ export default function Profile() {
     try {
       await unblockUser(token, profile.id);
       await refreshProfile();
+      toast.success(`Unblocked @${profile.username}`);
     } catch (err) {
-      window.alert(err.message);
+      toast.error(err.message);
     }
   };
 

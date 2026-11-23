@@ -6,6 +6,7 @@ import { getFollowRequests, acceptFollowRequest, declineFollowRequest } from "..
 import Avatar from "../components/Avatar";
 import SocialIcon from "../components/SocialIcon";
 import "./Privacy.css";
+import { useToast } from "../features/toast/ToastContext";
 
 function timeAgo(value) {
   const diff = Math.max(1, Date.now() - new Date(value).getTime());
@@ -28,6 +29,7 @@ function messageFor(n) {
 
 export default function Notifications() {
   const { token } = useAuth();
+  const toast = useToast();
   const [notifications, setNotifications] = useState([]);
   const [requests, setRequests] = useState([]); // pending follow requests (private account)
   const [loading, setLoading] = useState(true);
@@ -55,8 +57,9 @@ export default function Notifications() {
     try {
       await acceptFollowRequest(token, id);
       setRequests((list) => list.filter((r) => r.id !== id));
+      toast.success("Follow request accepted");
     } catch (err) {
-      window.alert(err.message);
+      toast.error(err.message);
     }
   };
 
@@ -64,8 +67,9 @@ export default function Notifications() {
     try {
       await declineFollowRequest(token, id);
       setRequests((list) => list.filter((r) => r.id !== id));
+      toast.info("Follow request declined");
     } catch (err) {
-      window.alert(err.message);
+      toast.error(err.message);
     }
   };
 

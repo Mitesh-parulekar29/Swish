@@ -2,6 +2,10 @@ const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
 const generateUsername = require('../utils/generateUsername');
 const { ROLES } = require('../models/User');
+const { isEmail, isNonEmptyString, passwordProblem } = require('../utils/validators');
+
+// Roles a visitor may pick at signup. 'admin' can never be self-assigned.
+const SELF_SERVE_ROLES = ROLES.filter((r) => r !== 'admin');
 
 // POST /api/auth/register
 // Creates a new user. Does NOT log the user in or return a token -
@@ -17,11 +21,17 @@ const register = async (req, res) => {
       });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password must be at least 8 characters long',
-      });
+    if (!isNonEmptyString(name, 80)) {
+      return res.status(400).json({ success: false, message: 'Name must be 1-80 characters' });
+    }
+
+    if (!isEmail(email)) {
+      return res.status(400).json({ success: false, message: 'Enter a valid email address' });
+    }
+
+    const pwProblem = passwordProblem(password);
+    if (pwProblem) {
+      return res.status(400).json({ success: false, message: pwProblem });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -34,7 +44,7 @@ const register = async (req, res) => {
       });
     }
 
-    const safeRole = ROLES.includes(role) ? role : 'student';
+    const safeRole = SELF_SERVE_ROLES.includes(role) ? role : 'student';
     const username = await generateUsername(normalizedEmail);
 
     const user = await User.create({
@@ -72,7 +82,7 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
+    if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
       return res.status(400).json({
         success: false,
         message: 'Email and password are required',
@@ -130,7 +140,7 @@ const login = async (req, res) => {
 
   return res.status(500).json({
     success: false,
-    message: error.message,
+    message: 'Something went wrong during login',
   });
 }
 };
@@ -161,11 +171,13 @@ const changePassword = async (req, res) => {
       });
     }
 
-    if (newPassword.length < 8) {
-      return res.status(400).json({
-        success: false,
-        message: 'New password must be at least 8 characters long',
-      });
+    if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+      return res.status(400).json({ success: false, message: 'Invalid password data' });
+    }
+
+    const newPwProblem = passwordProblem(newPassword);
+    if (newPwProblem) {
+      return res.status(400).json({ success: false, message: newPwProblem });
     }
 
     if (newPassword !== confirmPassword) {

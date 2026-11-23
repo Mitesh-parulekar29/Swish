@@ -12,6 +12,7 @@ import {
   toggleCommentLike,
 } from "../features/posts/postsApi";
 import { useAuth } from "../features/auth/AuthContext";
+import { useToast } from "../features/toast/ToastContext";
 
 function timeAgo(value) {
   if (!value) return "just now";
@@ -165,6 +166,7 @@ function CommentRow({
 
 export default function PostCard({ post, onChange }) {
   const { token, user } = useAuth();
+  const toast = useToast();
   const [liked, setLiked] = useState(post.isLiked);
   const [likes, setLikes] = useState(post.likesCount || 0);
 
@@ -206,6 +208,7 @@ export default function PostCard({ post, onChange }) {
     } catch {
       setLiked(liked);
       setLikes(likes);
+      toast.error("Could not update your like. Try again.");
     } finally {
       setBusy(false);
     }
@@ -220,6 +223,7 @@ export default function PostCard({ post, onChange }) {
       setLikersList(res?.data?.users || []);
     } catch {
       setLikersList([]);
+      toast.error("Could not load likes.");
     } finally {
       setLoadingLikers(false);
     }
@@ -294,6 +298,7 @@ export default function PostCard({ post, onChange }) {
       }
     } catch (err) {
       setCommentError(err.message || "Failed to post comment");
+      toast.error(err.message || "Failed to post comment");
       setCommentText(textToSend);
       setReplyTarget(parentId ? { parentId, replyToUsername: "" } : null);
     } finally {
@@ -317,16 +322,23 @@ export default function PostCard({ post, onChange }) {
       } else {
         setCommentsCount((prev) => Math.max(0, prev - 1));
       }
+      toast.success("Comment deleted");
     } catch (err) {
       console.error(err);
+      toast.error(err.message || "Could not delete comment");
     }
   };
 
   /* ---- Delete post ---- */
   const handleDeletePost = async () => {
     if (!window.confirm("Delete this post?")) return;
-    await deletePost(token, post.id || post._id);
-    onChange?.(post.id || post._id);
+    try {
+      await deletePost(token, post.id || post._id);
+      onChange?.(post.id || post._id);
+      toast.success("Post deleted");
+    } catch (err) {
+      toast.error(err.message || "Could not delete post");
+    }
   };
 
   /* ---- Caption rendering (hashtag links) ---- */
